@@ -41,6 +41,11 @@ recordings: $(RECORDINGS)
 
 # Records the demo scenes and serves the viewer at http://localhost:$(PORT)/viewer/
 view: recordings
+	@if python3 -c "import socket,sys; s=socket.socket(); sys.exit(s.connect_ex(('127.0.0.1',$(PORT)))!=0)"; then \
+		echo "Port $(PORT) is already in use. If the viewer is already running, open"; \
+		echo "http://localhost:$(PORT)/viewer/ or pick another port: make view PORT=8766"; \
+		exit 1; \
+	fi
 	@echo "Viewer: http://localhost:$(PORT)/viewer/"
 	python3 -m http.server $(PORT) --bind 127.0.0.1
 
