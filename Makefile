@@ -7,7 +7,7 @@ SRCS := $(wildcard src/*.cpp)
 OBJS := $(SRCS:src/%.cpp=$(BUILD)/obj/%.o)
 LIB := $(BUILD)/libphys.a
 
-.PHONY: all test demo clean
+.PHONY: all test demo recordings view clean
 
 all: $(LIB) $(BUILD)/tests $(BUILD)/stack_demo
 
@@ -29,6 +29,20 @@ test: $(BUILD)/tests
 
 demo: $(BUILD)/stack_demo
 	./$(BUILD)/stack_demo
+
+SCENES := tower dominoes pyramid
+RECORDINGS := $(SCENES:%=$(BUILD)/%.json)
+PORT ?= 8765
+
+$(BUILD)/%.json: $(BUILD)/stack_demo
+	./$(BUILD)/stack_demo $* --record $@
+
+recordings: $(RECORDINGS)
+
+# Records the demo scenes and serves the viewer at http://localhost:$(PORT)/viewer/
+view: recordings
+	@echo "Viewer: http://localhost:$(PORT)/viewer/"
+	python3 -m http.server $(PORT) --bind 127.0.0.1
 
 clean:
 	rm -rf $(BUILD)

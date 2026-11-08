@@ -1,5 +1,6 @@
 // Self-contained test runner. Build with `make test`.
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <functional>
 #include <string>
@@ -393,6 +394,36 @@ TEST(simulation_is_deterministic) {
                std::memcmp(&a->orientation, &b->orientation, sizeof(Quat)) == 0;
     }
     CHECK(same);
+}
+
+TEST(recorder_writes_viewer_file) {
+    World w;
+    addGround(w);
+    addBox(w, {0, 0.5, 0}, {0.5, 0.5, 0.5});
+    Recorder rec;
+    rec.capture(w);
+    w.step(w.settings.fixedDt);
+    addSphere(w, {0, 3, 0}, 0.25);  // Appears in the second frame only.
+    rec.capture(w);
+    CHECK(rec.frameCount() == 2);
+
+    std::string path = std::string(std::getenv("TMPDIR") ? std::getenv("TMPDIR") : "/tmp") +
+                       "/phys_recorder_test.json";
+    CHECK(rec.save(path));
+    std::FILE* f = std::fopen(path.c_str(), "r");
+    CHECK(f != nullptr);
+    if (!f) return;
+    std::string text;
+    char buf[4096];
+    size_t n;
+    while ((n = std::fread(buf, 1, sizeof(buf), f)) > 0) text.append(buf, n);
+    std::fclose(f);
+    std::remove(path.c_str());
+    CHECK(text.find("\"version\":1") != std::string::npos);
+    CHECK(text.find("\"shape\":\"plane\"") != std::string::npos);
+    CHECK(text.find("\"shape\":\"box\",\"type\":\"dynamic\",\"size\":[0.5,0.5,0.5]") != std::string::npos);
+    CHECK(text.find("\"shape\":\"sphere\",\"type\":\"dynamic\",\"size\":[0.25]") != std::string::npos);
+    CHECK(text.find("\"c\":[") != std::string::npos);
 }
 
 int main(int argc, char** argv) {

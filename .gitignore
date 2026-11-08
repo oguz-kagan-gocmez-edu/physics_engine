@@ -1,2 +1,46 @@
+# Build output
 build/
-build-cmake/
+build-*/
+cmake-build-*/
+out/
+*.o
+*.obj
+*.a
+*.lib
+*.so
+*.dylib
+*.dll
+*.exe
+*.pdb
+*.dSYM/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeUserPresets.json
+cmake_install.cmake
+CTestTestfile.cmake
+Testing/
+compile_commands.json
+
+# Simulation output (regenerate with `make recordings`)
+*.csv
+/*.json
+
+# Editors and IDEs
+.vscode/
+.idea/
+.vs/
+*.swp
+*~
+.cache/
+.clangd/
+
+# Local tool settings
+.claude/
+.env
+.env.*
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -7,6 +7,7 @@
 #include "phys/collision.h"
 #include "phys/math.h"
 #include "phys/raycast.h"
+#include "phys/recorder.h"
 #include "phys/shape.h"
 #include "phys/solver.h"
 #include "phys/world.h"

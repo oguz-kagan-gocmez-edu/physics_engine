@@ -13,6 +13,7 @@ add_library(phys
     src/broadphase.cpp
     src/collision.cpp
     src/raycast.cpp
+    src/recorder.cpp
     src/solver.cpp
     src/world.cpp)
 target_include_directories(phys PUBLIC include)

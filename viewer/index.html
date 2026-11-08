@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Physics Viewer</title>
+<style>
+  :root {
+    --bg: #eef0f3;
+    --panel: rgba(255, 255, 255, 0.88);
+    --panel-border: rgba(20, 24, 31, 0.10);
+    --text: #1b1f27;
+    --muted: #5d6573;
+    --accent: #2f6fdf;
+    --accent-text: #ffffff;
+    --track: rgba(20, 24, 31, 0.14);
+    --scene-bg: #e7eaee;
+    --ground: #d9dde3;
+    --grid: #b9c0ca;
+    --contact: #e0452b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #121418;
+      --panel: rgba(28, 31, 38, 0.88);
+      --panel-border: rgba(255, 255, 255, 0.09);
+      --text: #e7e9ee;
+      --muted: #9aa2b1;
+      --accent: #5b92f0;
+      --track: rgba(255, 255, 255, 0.16);
+      --scene-bg: #16191e;
+      --ground: #23272e;
+      --grid: #3a404a;
+      --contact: #ff6b4f;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; }
+  #scene { position: fixed; inset: 0; }
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--panel-border);
+    border-radius: 10px; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); }
+  #top { top: 12px; left: 12px; padding: 10px 12px; display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+    max-width: calc(100% - 24px); }
+  #top h1 { font-size: 14px; margin: 0 4px 0 0; font-weight: 600; }
+  #stats { color: var(--muted); font-variant-numeric: tabular-nums; }
+  #options { top: 12px; right: 12px; padding: 10px 12px; display: flex; flex-direction: column; gap: 6px; }
+  #options label { display: flex; gap: 6px; align-items: center; cursor: pointer; user-select: none; }
+  #info { right: 12px; top: 140px; padding: 10px 12px; min-width: 210px; display: none;
+    font-variant-numeric: tabular-nums; }
+  #info h2 { font-size: 13px; margin: 0 0 6px; }
+  #info table { border-collapse: collapse; }
+  #info td { padding: 1px 0; vertical-align: top; }
+  #info td:first-child { color: var(--muted); padding-right: 10px; }
+  #bar { left: 12px; right: 12px; bottom: 12px; padding: 8px 12px; display: flex; gap: 10px; align-items: center; }
+  #time { font-variant-numeric: tabular-nums; min-width: 112px; text-align: right; color: var(--muted); }
+  #scrub { flex: 1; min-width: 60px; accent-color: var(--accent); }
+  button, select { font: inherit; color: var(--text); background: transparent; border: 1px solid var(--panel-border);
+    border-radius: 7px; padding: 4px 9px; cursor: pointer; }
+  button:hover, select:hover { border-color: var(--accent); }
+  button.primary { background: var(--accent); color: var(--accent-text); border-color: var(--accent); min-width: 64px; }
+  #drop { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; text-align: center;
+    padding: 24px; color: var(--muted); font-size: 15px; pointer-events: none; }
+  #drop.show { display: flex; }
+  #drop.over { background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--text); }
+  #drop code { background: var(--panel); padding: 2px 6px; border-radius: 5px; }
+  #help { color: var(--muted); }
+  @media (max-width: 640px) {
+    #options { top: auto; bottom: 64px; }
+    #info { top: auto; bottom: 170px; }
+    #help { display: none; }
+    #time { min-width: 0; }
+  }
+</style>
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+</head>
+<body>
+<div id="scene"></div>
+
+<div id="top" class="panel">
+  <h1>Physics Viewer</h1>
+  <select id="recording" title="Recording">
+    <option value="../build/tower.json">tower</option>
+    <option value="../build/dominoes.json">dominoes</option>
+    <option value="../build/pyramid.json">pyramid</option>
+  </select>
+  <button id="open" title="Open a recording file">Open file…</button>
+  <input id="file" type="file" accept=".json,application/json" hidden>
+  <span id="stats"></span>
+</div>
+
+<div id="options" class="panel">
+  <label><input type="checkbox" id="optContacts" checked> Contacts <span id="help">(C)</span></label>
+  <label><input type="checkbox" id="optShadows" checked> Shadows</label>
+  <label><input type="checkbox" id="optLoop" checked> Loop</label>
+  <label><input type="checkbox" id="optSmooth" checked> Interpolate</label>
+</div>
+
+<div id="info" class="panel">
+  <h2 id="infoTitle"></h2>
+  <table id="infoTable"></table>
+</div>
+
+<div id="bar" class="panel">
+  <button id="play" class="primary" title="Play / pause (Space)">Play</button>
+  <button id="restart" title="Restart (R)">⟲</button>
+  <input id="scrub" type="range" min="0" max="1" step="0.0001" value="0" aria-label="Timeline">
+  <span id="time">0.00 / 0.00 s</span>
+  <select id="speed" title="Playback speed">
+    <option value="0.1">0.1×</option>
+    <option value="0.25">0.25×</option>
+    <option value="0.5">0.5×</option>
+    <option value="1" selected>1×</option>
+    <option value="2">2×</option>
+  </select>
+</div>
+
+<div id="drop">
+  <div>Drop a recording here, or use <b>Open file…</b><br><br>
+  Make one with <code>./build/stack_demo tower --record build/tower.json</code></div>
+</div>
+
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+
+const $ = (id) => document.getElementById(id);
+const css = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+// ---------------------------------------------------------------- Scene setup
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+$("scene").appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+const camera = new THREE.PerspectiveCamera(45, 1, 0.05, 2000);
+camera.position.set(8, 6, 10);
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0x8a8f99, 1.1));
+const sun = new THREE.DirectionalLight(0xffffff, 1.6);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.bias = -0.0004;
+scene.add(sun, sun.target);
+
+function applyTheme() {
+  scene.background = new THREE.Color(css("--scene-bg"));
+  for (const m of groundMaterials) m.color.set(css("--ground"));
+  for (const g of grids) g.material.color.set(css("--grid"));
+  contactMaterial.color.set(css("--contact"));
+  normalMaterial.color.set(css("--contact"));
+}
+const groundMaterials = [];
+const grids = [];
+matchMedia("(prefers-color-scheme: dark)").addEventListener("change", applyTheme);
+
+function resize() {
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  camera.aspect = window.innerWidth / window.innerHeight;
+  camera.updateProjectionMatrix();
+}
+window.addEventListener("resize", resize);
+resize();
+
+// ---------------------------------------------------------------- Body meshes
+const bodyRoot = new THREE.Group();
+scene.add(bodyRoot);
+
+function bodyColor(id, type) {
+  if (type === "kinematic") return new THREE.Color("#e8973a");
+  const hue = (id * 0.61803398875) % 1;
+  return new THREE.Color().setHSL(hue, 0.5, 0.58);
+}
+
+// Sphere with alternating octants, so you can see it spin.
+function makeSphere(r, color) {
+  const geo = new THREE.SphereGeometry(r, 32, 18);
+  const pos = geo.attributes.position;
+  const colors = new Float32Array(pos.count * 3);
+  const light = color.clone().lerp(new THREE.Color(1, 1, 1), 0.55);
+  for (let i = 0; i < pos.count; i++) {
+    const flip = (pos.getX(i) > 0) ^ (pos.getY(i) > 0) ^ (pos.getZ(i) > 0);
+    (flip ? light : color).toArray(colors, i * 3);
+  }
+  geo.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  return new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.55 }));
+}
+
+function makeBox(h, color) {
+  const geo = new THREE.BoxGeometry(h[0] * 2, h[1] * 2, h[2] * 2);
+  const mesh = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ color, roughness: 0.6 }));
+  const edges = new THREE.LineSegments(new THREE.EdgesGeometry(geo),
+    new THREE.LineBasicMaterial({ color: color.clone().multiplyScalar(0.55) }));
+  edges.raycast = () => {};
+  mesh.add(edges);
+  return mesh;
+}
+
+function makePlane() {
+  // Engine planes use local +Y as the normal; three.js planes face +Z.
+  const group = new THREE.Group();
+  const mat = new THREE.MeshStandardMaterial({ color: css("--ground"), roughness: 1 });
+  groundMaterials.push(mat);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(400, 400), mat);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  ground.raycast = () => {};
+  const grid = new THREE.GridHelper(60, 60, css("--grid"), css("--grid"));
+  grid.position.y = 0.001;
+  grids.push(grid);
+  group.add(ground, grid);
+  return group;
+}
+
+// ---------------------------------------------------------------- Contacts
+const MAX_CONTACTS = 4096;
+const contactMaterial = new THREE.MeshBasicMaterial({ color: css("--contact") });
+const contactDots = new THREE.InstancedMesh(new THREE.SphereGeometry(0.035, 10, 6), contactMaterial, MAX_CONTACTS);
+contactDots.count = 0;
+contactDots.raycast = () => {};
+const normalMaterial = new THREE.LineBasicMaterial({ color: css("--contact") });
+const normalGeo = new THREE.BufferGeometry();
+normalGeo.setAttribute("position", new THREE.BufferAttribute(new Float32Array(MAX_CONTACTS * 6), 3));
+const normalLines = new THREE.LineSegments(normalGeo, normalMaterial);
+normalLines.frustumCulled = false;
+scene.add(contactDots, normalLines);
+applyTheme();
+
+// ---------------------------------------------------------------- Recording
+let rec = null;        // { dt, duration, bodies: Map, frames: [] }
+let playTime = 0;
+let playing = false;
+let selected = null;   // body id
+
+function parseRecording(data) {
+  if (!data || !Array.isArray(data.frames) || !Array.isArray(data.bodies)) {
+    throw new Error("Not a physics recording (missing bodies or frames).");
+  }
+  const frames = data.frames.map((f) => {
+    const p = f.p;
+    const index = new Map();
+    for (let i = 0; i + 7 < p.length; i += 8) index.set(p[i], i);
+    return { t: f.t, p, index, c: f.c || [] };
+  });
+  const t0 = frames.length ? frames[0].t : 0;
+  return {
+    dt: data.dt || (frames.length > 1 ? frames[1].t - frames[0].t : 1 / 60),
+    t0,
+    duration: frames.length ? frames[frames.length - 1].t - t0 : 0,
+    descs: data.bodies,
+    frames,
+  };
+}
+
+function buildScene(r) {
+  bodyRoot.clear();
+  groundMaterials.length = 0;
+  grids.length = 0;
+  r.meshes = new Map();
+  for (const d of r.descs) {
+    const color = bodyColor(d.id, d.type);
+    let obj;
+    if (d.shape === "sphere") obj = makeSphere(d.size[0], color);
+    else if (d.shape === "box") obj = makeBox(d.size, color);
+    else if (d.shape === "plane") obj = makePlane();
+    else continue;
+    obj.traverse((o) => { if (o.isMesh && d.shape !== "plane") o.castShadow = o.receiveShadow = true; });
+    obj.userData.bodyId = d.id;
+    obj.visible = false;
+    bodyRoot.add(obj);
+    r.meshes.set(d.id, obj);
+  }
+  applyTheme();
+  fitCamera(r);
+}
+
+// Frames where the bodies are during the first part of the run (where the action starts).
+function fitCamera(r) {
+  const box = new THREE.Box3();
+  const planes = new Set(r.descs.filter((d) => d.shape === "plane").map((d) => d.id));
+  const end = Math.max(1, Math.ceil(r.frames.length * 0.2));
+  const step = Math.max(1, Math.floor(end / 10));
+  for (let f = 0; f < end; f += step) {
+    const { p } = r.frames[f];
+    for (let i = 0; i + 7 < p.length; i += 8) {
+      if (!planes.has(p[i])) box.expandByPoint(new THREE.Vector3(p[i + 1], p[i + 2], p[i + 3]));
+    }
+  }
+  if (box.isEmpty()) box.set(new THREE.Vector3(-2, 0, -2), new THREE.Vector3(2, 2, 2));
+  const center = box.getCenter(new THREE.Vector3());
+  const radius = Math.max(box.getSize(new THREE.Vector3()).length() * 0.5, 1.5);
+  const dist = radius / Math.sin(THREE.MathUtils.degToRad(camera.fov * 0.5)) * 1.05;
+  controls.target.copy(center);
+  camera.position.copy(center).add(new THREE.Vector3(0.55, 0.45, 0.7).normalize().multiplyScalar(dist));
+  camera.near = dist / 200;
+  camera.far = dist * 50;
+  camera.updateProjectionMatrix();
+
+  // Shadow camera covers the scene.
+  const s = radius * 1.6;
+  Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 0.1, far: radius * 8 });
+  sun.shadow.camera.updateProjectionMatrix();
+  sun.target.position.copy(center);
+  sun.position.copy(center).add(new THREE.Vector3(0.5, 1, 0.35).normalize().multiplyScalar(radius * 3));
+}
+
+function loadData(data, label) {
+  try {
+    rec = parseRecording(data);
+  } catch (e) {
+    showDrop(e.message);
+    return;
+  }
+  buildScene(rec);
+  selected = null;
+  $("info").style.display = "none";
+  $("drop").classList.remove("show");
+  playTime = 0;
+  setPlaying(true);
+  $("stats").textContent = `${label} · ${rec.descs.length} bodies · ${rec.frames.length} frames`;
+  render();
+}
+
+async function loadUrl(url) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    loadData(await res.json(), url.split("/").pop());
+  } catch (e) {
+    showDrop(location.protocol === "file:"
+      ? "Opened from disk, so recordings can't be fetched automatically."
+      : `Couldn't load ${url} (${e.message}).`);
+  }
+}
+
+function loadFile(file) {
+  file.text().then((t) => {
+    try { loadData(JSON.parse(t), file.name); } catch (e) { showDrop(`${file.name}: ${e.message}`); }
+  });
+}
+
+function showDrop(message) {
+  const el = $("drop");
+  el.querySelector("div").innerHTML =
+    `${message ? message + "<br><br>" : ""}Drop a recording here, or use <b>Open file…</b><br><br>` +
+    "Make one with <code>./build/stack_demo tower --record build/tower.json</code>";
+  el.classList.add("show");
+}
+
+// ---------------------------------------------------------------- Playback
+const tmpQa = new THREE.Quaternion(), tmpQb = new THREE.Quaternion();
+
+function frameAt(time) {
+  const n = rec.frames.length;
+  const x = Math.min(Math.max(time / rec.dt, 0), n - 1);
+  const i = Math.min(Math.floor(x), n - 1);
+  return { i, j: Math.min(i + 1, n - 1), alpha: $("optSmooth").checked ? x - i : 0 };
+}
+
+function pose(frame, id, out) {
+  const k = frame.index.get(id);
+  if (k === undefined) return false;
+  const p = frame.p;
+  out.pos.set(p[k + 1], p[k + 2], p[k + 3]);
+  out.quat.set(p[k + 5], p[k + 6], p[k + 7], p[k + 4]);  // three.js order is x, y, z, w.
+  return true;
+}
+
+const poseA = { pos: new THREE.Vector3(), quat: tmpQa };
+const poseB = { pos: new THREE.Vector3(), quat: tmpQb };
+
+function render() {
+  if (!rec) return;
+  const { i, j, alpha } = frameAt(playTime);
+  const fa = rec.frames[i], fb = rec.frames[j];
+
+  for (const [id, obj] of rec.meshes) {
+    const hasA = pose(fa, id, poseA);
+    obj.visible = hasA;
+    if (!hasA) continue;
+    if (alpha > 0 && pose(fb, id, poseB)) {
+      obj.position.lerpVectors(poseA.pos, poseB.pos, alpha);
+      obj.quaternion.slerpQuaternions(poseA.quat, poseB.quat, alpha);
+    } else {
+      obj.position.copy(poseA.pos);
+      obj.quaternion.copy(poseA.quat);
+    }
+  }
+
+  // Contacts snap to the nearest frame (they appear and vanish, so blending is meaningless).
+  const show = $("optContacts").checked;
+  const cf = alpha < 0.5 ? fa : fb;
+  const c = cf.c;
+  const count = show ? Math.min(c.length / 6, MAX_CONTACTS) : 0;
+  const m = new THREE.Matrix4();
+  const lines = normalGeo.attributes.position.array;
+  for (let k = 0; k < count; k++) {
+    const o = k * 6;
+    m.makeTranslation(c[o], c[o + 1], c[o + 2]);
+    contactDots.setMatrixAt(k, m);
+    lines.set([c[o], c[o + 1], c[o + 2],
+      c[o] + c[o + 3] * 0.25, c[o + 1] + c[o + 4] * 0.25, c[o + 2] + c[o + 5] * 0.25], o);
+  }
+  contactDots.count = count;
+  contactDots.instanceMatrix.needsUpdate = true;
+  normalGeo.setDrawRange(0, count * 2);
+  normalGeo.attributes.position.needsUpdate = true;
+
+  $("time").textContent = `${playTime.toFixed(2)} / ${rec.duration.toFixed(2)} s`;
+  $("scrub").value = rec.duration > 0 ? playTime / rec.duration : 0;
+  updateInfo(i);
+}
+
+function setPlaying(p) {
+  playing = p && !!rec;
+  $("play").textContent = playing ? "Pause" : "Play";
+}
+
+function stepFrames(n) {
+  if (!rec) return;
+  setPlaying(false);
+  const i = Math.round(playTime / rec.dt) + n;
+  playTime = Math.min(Math.max(i, 0), rec.frames.length - 1) * rec.dt;
+  render();
+}
+
+// ---------------------------------------------------------------- Selection info
+const raycaster = new THREE.Raycaster();
+let downAt = null;
+renderer.domElement.addEventListener("pointerdown", (e) => { downAt = [e.clientX, e.clientY]; });
+renderer.domElement.addEventListener("pointerup", (e) => {
+  if (!rec || !downAt || Math.hypot(e.clientX - downAt[0], e.clientY - downAt[1]) > 4) return;
+  const ndc = new THREE.Vector2((e.clientX / innerWidth) * 2 - 1, -(e.clientY / innerHeight) * 2 + 1);
+  raycaster.setFromCamera(ndc, camera);
+  const hit = raycaster.intersectObjects(bodyRoot.children, true).find((h) => h.object.visible);
+  let obj = hit && hit.object;
+  while (obj && obj.userData.bodyId === undefined) obj = obj.parent;
+  selectBody(obj ? obj.userData.bodyId : null);
+});
+
+function selectBody(id) {
+  if (selected !== null && rec.meshes.has(selected)) highlight(rec.meshes.get(selected), false);
+  selected = id;
+  if (id !== null) highlight(rec.meshes.get(id), true);
+  $("info").style.display = id === null ? "none" : "block";
+  render();
+}
+
+function highlight(obj, on) {
+  obj.traverse((o) => {
+    if (o.isMesh && o.material.emissive) o.material.emissive.set(on ? 0x444444 : 0x000000);
+  });
+}
+
+function fmt(v) { return v.map((x) => x.toFixed(3)).join(", "); }
+
+function updateInfo(i) {
+  if (selected === null) return;
+  const d = rec.descs.find((b) => b.id === selected);
+  const f = rec.frames[i];
+  const now = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
+  $("infoTitle").textContent = `Body ${d.id} · ${d.type} ${d.shape}`;
+  if (!pose(f, selected, now)) {
+    $("infoTable").innerHTML = "<tr><td>Not present at this time</td></tr>";
+    return;
+  }
+  // Velocity from neighbouring frames.
+  const prev = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
+  const next = { pos: new THREE.Vector3(), quat: new THREE.Quaternion() };
+  const a = i > 0 && pose(rec.frames[i - 1], selected, prev) ? i - 1 : i;
+  const b = i + 1 < rec.frames.length && pose(rec.frames[i + 1], selected, next) ? i + 1 : i;
+  if (a === i) prev.pos.copy(now.pos);
+  if (b === i) next.pos.copy(now.pos);
+  const vel = b > a ? next.pos.clone().sub(prev.pos).divideScalar((b - a) * rec.dt) : new THREE.Vector3();
+  const size = d.shape === "sphere" ? `r = ${d.size[0]}` : d.shape === "box"
+    ? `${d.size.map((s) => +(s * 2).toFixed(3)).join(" × ")}` : "infinite";
+  const euler = new THREE.Euler().setFromQuaternion(now.quat);
+  const deg = [euler.x, euler.y, euler.z].map((r) => THREE.MathUtils.radToDeg(r));
+  $("infoTable").innerHTML = [
+    ["Size", size],
+    ["Position", fmt(now.pos.toArray())],
+    ["Rotation°", deg.map((x) => x.toFixed(1)).join(", ")],
+    ["Velocity", fmt(vel.toArray())],
+    ["Speed", `${vel.length().toFixed(3)} m/s`],
+  ].map(([k, v]) => `<tr><td>${k}</td><td>${v}</td></tr>`).join("");
+}
+
+// ---------------------------------------------------------------- Controls
+$("play").onclick = () => {
+  if (rec && !playing && playTime >= rec.duration) playTime = 0;
+  setPlaying(!playing);
+};
+$("restart").onclick = () => { playTime = 0; render(); };
+$("scrub").oninput = (e) => {
+  if (!rec) return;
+  setPlaying(false);
+  playTime = Number(e.target.value) * rec.duration;
+  render();
+};
+$("optContacts").onchange = render;
+$("optSmooth").onchange = render;
+$("optShadows").onchange = (e) => { sun.castShadow = e.target.checked; };
+$("recording").onchange = (e) => loadUrl(e.target.value);
+$("open").onclick = () => $("file").click();
+$("file").onchange = (e) => { if (e.target.files[0]) loadFile(e.target.files[0]); e.target.value = ""; };
+
+window.addEventListener("keydown", (e) => {
+  if (e.target.tagName === "INPUT" && e.target.type !== "checkbox" && e.target.type !== "range") return;
+  if (e.code === "Space") { e.preventDefault(); $("play").click(); }
+  else if (e.code === "ArrowRight") { e.preventDefault(); stepFrames(e.shiftKey ? 10 : 1); }
+  else if (e.code === "ArrowLeft") { e.preventDefault(); stepFrames(e.shiftKey ? -10 : -1); }
+  else if (e.code === "KeyR") $("restart").click();
+  else if (e.code === "KeyC") { $("optContacts").checked = !$("optContacts").checked; render(); }
+  else if (e.code === "Escape" && rec) selectBody(null);
+});
+
+// Drag and drop.
+let dragDepth = 0;
+window.addEventListener("dragenter", (e) => { e.preventDefault(); dragDepth++; $("drop").classList.add("show", "over"); });
+window.addEventListener("dragover", (e) => e.preventDefault());
+window.addEventListener("dragleave", () => {
+  if (--dragDepth <= 0) { dragDepth = 0; $("drop").classList.remove("over"); if (rec) $("drop").classList.remove("show"); }
+});
+window.addEventListener("drop", (e) => {
+  e.preventDefault();
+  dragDepth = 0;
+  $("drop").classList.remove("over");
+  const f = e.dataTransfer.files[0];
+  if (f) loadFile(f);
+});
+
+// ---------------------------------------------------------------- Main loop
+let last = performance.now();
+renderer.setAnimationLoop((now) => {
+  const frameDt = Math.min((now - last) / 1000, 0.1);
+  last = now;
+  if (playing && rec) {
+    playTime += frameDt * Number($("speed").value);
+    if (playTime >= rec.duration) {
+      if ($("optLoop").checked) playTime = 0;
+      else { playTime = rec.duration; setPlaying(false); }
+    }
+    render();
+  }
+  controls.update();
+  renderer.render(scene, camera);
+});
+
+// Handle for poking at the viewer from the browser console.
+window.viewer = { THREE, scene, camera, controls, get recording() { return rec; } };
+
+// Load ?file=..., or the first demo recording.
+const params = new URLSearchParams(location.search);
+const initial = params.get("file") || $("recording").value;
+const known = [...$("recording").options].some((o) => o.value === initial);
+if (params.get("file") && !known) {
+  const opt = document.createElement("option");
+  opt.value = opt.textContent = initial;
+  $("recording").prepend(opt);
+}
+$("recording").value = initial;
+loadUrl(initial);
+</script>
+</body>
+</html>

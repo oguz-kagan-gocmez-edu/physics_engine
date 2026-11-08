@@ -59,6 +59,7 @@ These are on the roadmap below and the architecture leaves room for them.
 | `solver.h/.cpp` | Contact constraint solver (velocity and position). |
 | `raycast.h/.cpp` | Ray queries against bodies (sensors, picking, lidar). |
 | `world.h/.cpp` | Owns bodies and runs the pipeline. |
+| `recorder.h/.cpp` | Saves a run to JSON for the web viewer. |
 
 ### Rigid body
 
@@ -190,6 +191,20 @@ penetration ("slop", default 5 mm) keeps contacts alive between steps.
 - `World::manifolds()` exposes the current contacts so the program can read
   impact forces (accumulated normal impulse ÷ dt) or play sounds.
 
+### Recording and the web viewer
+
+`Recorder::capture(world)` appends one frame: every body's position and
+orientation, plus contact points and normals. Bodies are described (shape,
+size, type) the first time they appear, so bodies added or removed mid-run are
+handled; a body missing from a frame doesn't exist at that time. `save()`
+writes JSON, with numbers trimmed to 5 decimals to keep files small.
+
+`viewer/index.html` is a single static page (three.js from a CDN, no build
+step). It plays recordings at any speed, blending between frames so slow
+motion stays smooth, and shows contacts, which makes solver problems (missing
+contacts, wrong normals, jitter) easy to see. Rendering lives entirely outside
+the engine, so the engine stays free of graphics dependencies.
+
 ### Determinism
 
 - Bodies get increasing integer IDs; pairs are always ordered (lower ID first)
@@ -228,6 +243,7 @@ penetration ("slop", default 5 mm) keeps contacts alive between steps.
 - Collision filter bits, kinematic bodies, body removal, fixed-step `update()`.
 - Raycasts hit the right body at the right distance.
 - Two identical worlds produce bit-identical results (determinism).
+- The recorder writes a valid viewer file, including bodies added mid-run.
 
 ## Roadmap
 
