@@ -1,0 +1,26 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        precision: [double, float]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and test
+        run: |
+          if [ "${{ matrix.precision }}" = float ]; then
+            make test CPPFLAGS="-Iinclude -DPHYS_USE_FLOAT"
+          else
+            make test
+          fi
+      - name: Run demo scenes
+        run: make recordings

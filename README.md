@@ -110,3 +110,10 @@ tests/          self-contained test runner
 demos/          stack_demo: tower, dominoes and pyramid scenes; JSON or CSV output
 viewer/         index.html: 3D playback of recordings
 ```
+
+## License
+
+Copyright (c) 2026 Oğuz Kağan Göçmez. All rights reserved.
+
+The source is published for reference. No license is granted to copy, modify
+or redistribute it without permission.
