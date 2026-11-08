@@ -13,14 +13,12 @@ jobs:
         os: [ubuntu-latest, macos-latest]
         precision: [double, float]
     runs-on: ${{ matrix.os }}
+    env:
+      # Added to the Makefile's flags for every build step in the job.
+      CPPFLAGS: ${{ matrix.precision == 'float' && '-DPHYS_USE_FLOAT' || '' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Build and test
-        run: |
-          if [ "${{ matrix.precision }}" = float ]; then
-            make test CPPFLAGS="-Iinclude -DPHYS_USE_FLOAT"
-          else
-            make test
-          fi
+        run: make test
       - name: Run demo scenes
         run: make recordings
